@@ -13,7 +13,7 @@ This is a digital stopwatch created using **MASM x86Assembly** and the **Irvine3
 
 **5-** Split Time
 
-**6-** Session Activity Storage
+**6-** Session History Storage
 
 ## Steps to run the program:
 **1-** Download all files
@@ -22,8 +22,8 @@ This is a digital stopwatch created using **MASM x86Assembly** and the **Irvine3
 
 **3-** Go through the instructions provided in the `Setup.pdf` file to setup a Visual Studio program.
 
-**4-** Copy the content of the `stopwatch.txt` file into the Visual Studio Program
+**4-** Copy the contents of the `stopwatch.txt` file into the Visual Studio Program
 
-**5a-** Save and compile the program with: **Ctrl+Shift+B**
+**5a-** Save the program and then compile the program with: **Ctrl+Shift+B**
 
  **b-** Run the program with: **Ctrl+F5** 
