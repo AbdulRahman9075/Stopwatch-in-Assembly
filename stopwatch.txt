@@ -1,145 +1,610 @@
 INCLUDE Irvine32.inc
+
 .data
-
 ; Display Strings
-prompt byte "Press SPACE to start/stop , ESC to lap , BACKSPACE to reset ",0
-hrsstr byte "H : ",0
-minstr byte "M : ",0
-secstr byte "S",0
-lapstr byte "LAP: ",0
+prompt byte "Press SPACE to start/stop , ESC to lap , s to SPLIT , BACKSPACE to reset, TAB to print usage history", 0
+precisionprompt byte "Choose display precision[0 == H:M:S, 1 == H:M:S:MS]: ", 0
+formatprompt byte "Choose time format[0 == H:M:S:MS, 1 == MS:S:M:H]: ", 0
 
+hrsstr byte "H : ", 0
+minstr byte "M : ", 0
+secstr byte "S : ", 0
+msstr byte "  MS", 0
+lapstr byte "LAP: ", 0
+diffstr byte "DIFF: ", 0
+splitstr byte "SPLIT: ", 0
 ; Time variables
-hrs  DWORD 0
-min  DWORD 0
-sec  DWORD 0
+hrs dword 0
+min dword 0
+sec dword 0
+ms dword 0
 
-startTimer BYTE 0        ; Flag to control start/stop of stopwatch
+; Lap memory
+len dword 5
+laptimemins dword 5 DUP(0)
+laptimehours dword 5 DUP(0) 
+laptimesec dword 5 DUP(0) 
+laptimems dword 5 dup(0)
 
+lapdiffmins dword 5 DUP(0) 
+lapdiffhours dword 5 DUP(0) 
+lapdiffsec dword 5 DUP(0) 
+lapdiffms dword 5 DUP(0) 
+
+splitmins dword 5 DUP(0) 
+splithours dword 5 DUP(0) 
+splitsec dword 5 DUP(0) 
+splitms dword 5 DUP(0) 
+
+difflaphrs dword 0
+difflapmin dword 0
+difflapsec dword 0
+difflapms  dword 0
+
+lapcount dword 0  
+lapindex dword 0
+
+splitcount dword 0  
+splitindex dword 0
+
+startTimer byte 0         
+precision  byte 0
+timeformat byte 0
 .code
 
-; Display Time
-printTime PROC
-    mov eax, hrs
-    call WriteDec                   ; Display hours
-    mov edx, OFFSET hrsstr
-    call WriteString
-    
-    mov eax, min
-    call WriteDec                   ; Display minutes
-    mov edx, OFFSET minstr
-    call WriteString
-    
-    mov eax, sec
-    call WriteDec                   ; Display seconds
-    mov edx, OFFSET secstr
-    call WriteString
-    call Crlf                      
+userinput proc
+    mov edx, offset formatprompt
+    call writestring
+    call readdec
+    cmp eax, 1
+    je setformat
+    mov timeformat, 0 
+    jmp checkprecision
+
+setformat:
+    mov timeformat, 1
+
+checkprecision:
+    mov edx, offset precisionprompt
+    call writestring
+    call readdec
+    cmp eax, 1
+    je setprecision
+    mov precision, 0  
+    jmp enduserinput
+
+setprecision:
+    mov precision, 1
+
+enduserinput:
     ret
-printTime ENDP
+userinput endp
 
 
 
+; Display Time
 
-;Change Flag
+printtime proc
+    push eax
+    push edx
+
+    cmp timeformat,0
+    jne smhformat
+
+    mov eax, ebx                   ; Display hours
+    call writedec
+    mov edx, offset hrsstr
+    call writestring
+
+    mov eax, ecx                   ; Display minutes
+    call writedec
+    mov edx, offset minstr
+    call writestring
+
+    mov eax, esi                   ; Display seconds
+    call writedec
+    mov edx, offset secstr
+    call writestring
+    
+
+
+    cmp precision,0
+    je endprinttime
+
+    mov eax, edi                   ; Display milliseconds
+    call writedec
+    mov edx, offset msstr
+    call writestring
+    jmp endprinttime
+
+    smhformat:
+
+    cmp precision,0
+    je printseconly  
+
+    mov eax, edi                   ; Display milliseconds
+    call writedec
+    mov edx, offset msstr
+    call writestring
+    jmp endprinttime
+
+    printseconly:
+    mov eax, esi                   ; Display seconds
+    call writedec
+    mov edx, offset secstr
+    call writestring
+
+    mov eax, ecx                   ; Display minutes
+    call writedec
+    mov edx, offset minstr
+    call writestring
+
+    mov eax, ebx                   ; Display hours
+    call writedec
+    mov edx, offset hrsstr
+    call writestring
+    
+    endprinttime:
+    call crlf
+    pop edx
+    pop eax
+    ret
+printTime endp
+
+
+; Change Flag
 toggleTimer PROC
     mov al, startTimer
-    xor al, 1                       ; Toggle the flag (0 -> 1, 1 -> 0)
+    xor al, 1                       ;Toggle the flag
     mov startTimer, al
     ret
 toggleTimer ENDP
 
-; Increment counter every second
-incrementTime PROC
+
+incrementtime proc
+
+    cmp precision,0
+    je incsec
+    
+    add ms,10
+    add difflapms,10
+    cmp ms, 1000
+    jl updatedisplay
+    cmp difflapms, 1000
+    jl updatedisplay
+    mov ms, 0
+    mov difflapms,0
+
+    incsec:
     inc sec
+    inc difflapsec
     cmp sec, 60
-    jl updateDisplay
-
+    jl updatedisplay
+    cmp difflapsec, 60
+    jl updatedisplay
     mov sec, 0
+    mov difflapsec,0
+
     inc min
+    inc difflapmin
     cmp min, 60
-    jl updateDisplay
-
+    jl updatedisplay
+    cmp difflapmin, 60
+    jl updatedisplay
     mov min, 0
+    mov difflapmin,0
+
     inc hrs
-    updateDisplay:
-        call printTime
+    inc difflaphrs
+updatedisplay:
+    push ebx
+    push ecx
+    push esi
+    push edi
+    mov ebx,hrs
+    mov ecx,min
+    mov esi,sec
+    mov edi,ms
+    call printtime
+    pop edi
+    pop esi
+    pop ecx
+    pop ebx
     ret
-incrementTime ENDP
+incrementtime endp
 
-; Reset original time (only allowed when timer is stopped)
-resetTime PROC
-    cmp startTimer, 0               ; Check if timer is running
-    je performReset
-    ret                             ; Exit if timer is running (prevent reset)
+; Reset original time
+resetTime proc
+    cmp starttimer, 0               
+    je performreset
+    ret                             
 
-performReset:
+performreset:
     mov hrs, 0
     mov min, 0
     mov sec, 0
+    mov ms,0
+    mov difflaphrs, 0
+    mov difflapmin, 0
+    mov difflapsec, 0
+    mov difflapms,0
+    mov ecx,len
+    mov esi,0
+    resetarray:
+        mov laptimehours[esi],0
+        mov laptimemins[esi],0
+        mov laptimesec[esi],0
+        mov laptimems[esi],0
+
+        mov lapdiffhours[esi],0
+        mov lapdiffmins[esi],0
+        mov lapdiffsec[esi],0
+        mov lapdiffms[esi],0
+
+        mov splithours[esi],0
+        mov splitmins[esi],0
+        mov splitsec[esi],0
+        mov splitms[esi],0
+        add esi,4
+    loop resetarray
+
     call clrscr
-    mov edx,offset prompt
+
+    mov edx, offset prompt
     call writestring
     call crlf
-    call printTime                  ; Immediately display 00:00:00 after reset
+
+    call userinput
+
+    push ebx
+    push ecx
+    push esi
+    push edi
+    mov ebx,hrs
+    mov ecx,min
+    mov esi,sec
+    mov edi,ms
+    call printtime
+    pop edi
+    pop esi
+    pop ecx
+    pop ebx          ; Immediately display 00:00:00 after reset
+
+    mov lapcount,0  
+    mov lapindex,0
+
+    mov splitcount,0  
+    mov splitindex,0
     ret
-resetTime ENDP
+resettime endp
 
-keyHandler PROC
+resetarrays proc
+    mov ecx,len
+    mov edi,0
+    clear:
+        mov laptimehours[edi],0
+        mov laptimemins[edi],0
+        mov laptimesec[edi],0
+        mov laptimems[edi],0
 
-    call ReadKey                  ; Attempt to read character
-    jz noKeyPressed                  ; If no key pressed, skip the rest
+        mov lapdiffhours[edi],0
+        mov lapdiffmins[edi],0
+        mov lapdiffsec[edi],0
+        mov lapdiffms[edi],0
 
-    cmp al, 1bh
-    je laptime                      ;LAP time on ESC key, only if timer is running
-    cmp al, 08h
-    je resetTime                     ; Reset time on BACKSPACE key, only if timer is stopped
-    cmp al, ' '
-    je toggleTimer                   ; Toggle timer start/stop on space
+        mov splithours[edi],0
+        mov splitmins[edi],0
+        mov splitsec[edi],0
+        mov splitms[edi],0
 
-    noKeyPressed:
+        add edi,4
+    loop clear
     ret
-keyHandler ENDP
+resetarrays endp
 
 laptime proc
-    cmp startTimer, 1               ; Check if timer is running
-    je performLap
-    ret   
+    local currlaphrs:dword
+    local currlapmin:dword
+    local currlapsec:dword
+    local currlapms:dword
+    enter 16,0
+    cmp startTimer,1             
+    je dolap
+    leave
+    ret
+
+    dolap:
+    mov eax,hrs
+    mov currlaphrs,eax
+    mov eax,min
+    mov currlapmin,eax
+    mov eax,sec
+    mov currlapsec,eax
+    mov eax,ms
+    mov currlapms,eax
+    ;print lap
+    call crlf
+    call crlf
+    mov edx, offset lapstr
+    call writestring
+    push ebx
+    push ecx
+    push esi
+    push edi
+    mov ebx,currlaphrs
+    mov ecx,currlapmin
+    mov esi,currlapsec
+    mov edi,currlapms
+    call printTime
+    pop edi
+    pop esi
+    pop ecx
+    pop ebx
+    ;print lapdiff
+    mov edx, offset diffstr
+    call writestring
+    push ebx
+    push ecx
+    push esi
+    push edi
+    mov ebx,difflaphrs
+    mov ecx,difflapmin
+    mov esi,difflapsec
+    mov edi,difflapms
+    call printTime
+    pop edi
+    pop esi
+    pop ecx
+    pop ebx
+    call crlf
+    call crlf
+
+    mov esi,len
+    cmp lapcount,esi
+    jl insertdata
     
-    performLap:
-        call crlf
-        mov edx,offset lapstr
-        call writestring
-        call printTime
-        call crlf
+    
+    mov lapcount,0
+    mov lapindex,0
+    call resetarrays
+
+    insertdata:
+    mov edi,lapindex
+    mov eax,difflaphrs
+    mov lapdiffhours[edi],eax
+    mov eax,currlaphrs
+    mov laptimehours[edi],eax
+
+    mov eax,difflapmin
+    mov lapdiffmins[edi],eax
+    mov eax,currlapmin
+    mov laptimemins[edi],eax
+
+    mov eax,difflapsec
+    mov lapdiffsec[edi],eax
+    mov eax,currlapsec
+    mov laptimesec[edi],eax
+
+    mov eax,difflapms
+    mov lapdiffms[edi],eax
+    mov eax,currlapms
+    mov laptimems[edi],eax
+
+    add edi,4
+    add lapcount,1
+    mov lapindex,edi
+    
+    ;reset global lap variables
+    mov difflaphrs,0
+    mov difflapmin,0
+    mov difflapsec,0
+    mov difflapms,0
+
+    leave
     ret
 laptime endp
 
-main PROC
-    call clrscr                     ; Clear the screen
-    mov edx, OFFSET prompt          ; Display prompt
-    call WriteString
+splittime proc
+    local splithrs:dword
+    local splitmin:dword
+    local splitse:dword
+    local splitm:dword
+    enter 16,0
+    cmp startTimer,1               
+    je performsplit
+    leave
+    ret
+
+    performsplit:
+    mov eax,hrs
+    mov splithrs,eax
+    mov eax,min
+    mov splitmin,eax
+    mov eax,sec
+    mov splitse,eax
+    mov eax,ms
+    mov splitm,eax
+
     call crlf
-    call printTime          ;       ; Display initial time (00:00:00)        
+    mov edx,offset splitstr
+    call writestring
+    push ebx
+    push ecx
+    push esi
+    push edi
+    mov ebx,splithrs
+    mov ecx,splitmin
+    mov esi,splitse
+    mov edi,splitm
+    call printtime
+    pop edi
+    pop esi
+    pop ecx
+    pop ebx
+    call crlf
 
-    ; Main loop
-    mainLoop:
-        call keyHandler             ; Check for keyboard input to control timer
-        cmp startTimer, 1           ; Check if the timer has started
-        jne mainLoop                ; If not started, stay in this loop
+    mov esi,len
+    cmp splitcount,esi
+    jl insertdata
+    
+    
+    mov splitcount,0
+    mov splitindex,0
+    call resetarrays
 
-    runningLoop:
-        mov eax, 1000               ; 1-second delay
-        call Delay                  ; Delay to simulate timer (1 second)
-        
-        call incrementTime          ; Increment time every second
+    insertdata:
+    mov edi,splitindex
 
-        call keyHandler             ; Check for keyboard input to allow stopping
+    mov eax,splithrs
+    mov splithours[edi],eax
 
-        cmp startTimer, 1           ; Check if timer is still running
-        je runningLoop              ; If still running, continue incrementing
-        
-        jmp mainLoop                ; If stopped, go back to waiting for start
-    exit
-main ENDP
+    mov eax,splitmin
+    mov splitmins[edi],eax
 
-END main
+    mov eax,splitse
+    mov splitsec[edi],eax
+
+    mov eax,splitm
+    mov splitms[edi],eax
+
+    add edi,4
+    add splitcount,1
+    mov splitindex,edi
+    
+    call crlf
+    leave
+    ret
+splittime endp
+
+
+printhistory proc
+    cmp startTimer, 0         
+    je doprint
+    ret
+
+    doprint:
+    mov edi, 0
+    performprint:
+    call crlf
+    mov edx, OFFSET lapstr
+    call WriteString
+
+
+    push ebx
+    push ecx
+    push esi
+    mov eax,edi
+    mov ebx,laptimehours[edi]
+    mov ecx,laptimemins[edi]
+    mov esi,laptimesec[edi]
+    mov edi,laptimems[eax]
+    call printTime
+    mov edi,eax
+    pop esi
+    pop ecx
+    pop ebx
+    mov edx, OFFSET diffstr
+    call WriteString
+    push ebx
+    push ecx
+    push esi
+    mov ebx,lapdiffhours[edi]
+    mov ecx,lapdiffmins[edi]
+    mov esi,lapdiffsec[edi]
+    mov edi,lapdiffms[eax]
+    call printTime
+    mov edi,eax
+    pop esi
+    pop ecx
+    pop ebx
+    call crlf
+    mov edx, OFFSET splitstr
+    call WriteString
+    push ebx
+    push ecx
+    push esi
+    mov ebx,splithours[edi]
+    mov ecx,splitmins[edi]
+    mov esi,splitsec[edi]
+    mov edi,splitms[eax]
+    call printTime
+    mov edi,eax
+    pop esi
+    pop ecx
+    pop ebx
+
+    add edi,4
+    cmp edi,20
+    jl performprint 
+
+    ret
+printhistory endp
+
+
+; ADD KEY BINDINGS HERE
+keyhandler proc
+    call readkey                  
+    jz nokeypressed            
+
+    cmp al, 1bh                   ;lap ESC
+    je laptime                    
+    cmp al, 08h                   ;reset BACKSPACE 
+    je resettime                 
+    cmp al, ' '                   ;pause/play SPACE
+    je toggletimer                
+    cmp al, 09h                   ;printhistory TAB
+    je printhistory                
+    cmp al, 's'
+    je splittime                  ;split small s
+noKeyPressed:
+    ret
+keyhandler endp
+
+
+
+main proc
+    call clrscr                     
+    mov edx, offset prompt       
+    call writestring
+    call crlf
+
+    call userinput
+
+    push ebx
+    push ecx
+    push esi
+    push edi
+    mov ebx,hrs
+    mov ecx,min
+    mov esi,sec
+    mov edi,ms
+    call printtime
+    pop edi
+    pop esi
+    pop ecx
+    pop ebx
+
+mainloop:
+    call keyhandler                 
+    cmp starttimer, 1              
+    jne mainloop                   
+
+runningloop:
+    cmp precision,0
+    je prectosec
+    mov eax, 10 
+    jmp calldelay
+    prectosec:
+    mov eax,1000
+    calldelay:
+    call delay                      
+    call incrementtime              
+    call keyhandler                 
+    cmp starttimer, 1               
+    je runningloop                  
+    jmp mainloop                    
+exit
+main endp
+
+end main
+
